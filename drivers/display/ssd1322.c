@@ -111,6 +111,7 @@ static int ssd1322_blanking_off(const struct device *dev)
 }
 
 /* Convert what the conversion buffer can hold to pixelx (3:0) and pixelx+1 (7:4) */
+#ifdef PIXEL_FORMAT_L_8
 static int ssd1322_convert_L_8(const struct device *dev, const uint8_t *buf, int cur_offset,
 			       uint32_t pixel_count)
 {
@@ -132,6 +133,7 @@ static int ssd1322_convert_L_8(const struct device *dev, const uint8_t *buf, int
 
 	return i;
 }
+#endif /* PIXEL_FORMAT_L_8 */
 
 /* Convert what the conversion buffer can hold to pixelx (3:0) and pixelx+1 (7:4) */
 static int ssd1322_convert_MONO01(const struct device *dev, const uint8_t *buf, int cur_offset,
@@ -203,6 +205,7 @@ static int ssd1322_write_pixels_MONO01(const struct device *dev, const uint8_t *
 	return 0;
 }
 
+#ifdef PIXEL_FORMAT_L_8
 static int ssd1322_write_pixels_L_8(const struct device *dev, const uint8_t *buf,
 				    uint32_t pixel_count,
 				    const struct display_buffer_descriptor *desc)
@@ -232,6 +235,7 @@ static int ssd1322_write_pixels_L_8(const struct device *dev, const uint8_t *buf
 	mipi_dbi_release(config->mipi_dev, &config->dbi_config);
 	return 0;
 }
+#endif /* PIXEL_FORMAT_L_8 */
 
 static int ssd1322_write(const struct device *dev, const uint16_t x, const uint16_t y,
 			 const struct display_buffer_descriptor *desc, const void *buf)
@@ -251,9 +255,11 @@ static int ssd1322_write(const struct device *dev, const uint16_t x, const uint1
 	case PIXEL_FORMAT_MONO01:
 		buf_len = MIN(desc->buf_size, desc->height * desc->width / SSD1322_8PPB);
 	break;
+	#ifdef PIXEL_FORMAT_L_8
 	case PIXEL_FORMAT_L_8:
 		buf_len = MIN(desc->buf_size, desc->height * desc->width / SSD1322_2PPB);
 	break;
+	#endif /* PIXEL_FORMAT_L_8 */
 	default:
 		return -EINVAL;
 	}
@@ -291,9 +297,11 @@ static int ssd1322_write(const struct device *dev, const uint16_t x, const uint1
 		return ret;
 	}
 
+	#ifdef PIXEL_FORMAT_L_8
 	if (data->current_pixel_format == PIXEL_FORMAT_L_8) {
 		return ssd1322_write_pixels_L_8(dev, buf, desc->width * desc->height, desc);
 	}
+	#endif /* PIXEL_FORMAT_L_8 */
 	return ssd1322_write_pixels_MONO01(dev, buf, desc->width * desc->height / SSD1322_8PPB,
 					   desc);
 }
@@ -311,7 +319,10 @@ static void ssd1322_get_capabilities(const struct device *dev, struct display_ca
 	memset(caps, 0, sizeof(struct display_capabilities));
 	caps->x_resolution = config->width;
 	caps->y_resolution = config->height;
-	caps->supported_pixel_formats = PIXEL_FORMAT_MONO01 | PIXEL_FORMAT_L_8;
+	caps->supported_pixel_formats = PIXEL_FORMAT_MONO01;
+#ifdef PIXEL_FORMAT_L_8
+	caps->supported_pixel_formats |= PIXEL_FORMAT_L_8;
+#endif
 	caps->current_pixel_format = data->current_pixel_format;
 	caps->screen_info = 0;
 }
@@ -438,9 +449,13 @@ static int ssd1322_set_pixel_format(const struct device *dev,
 
 	if (pixel_format == PIXEL_FORMAT_MONO01) {
 		data->current_pixel_format = PIXEL_FORMAT_MONO01;
-	} else if (pixel_format == PIXEL_FORMAT_L_8) {
+	}
+#ifdef PIXEL_FORMAT_L_8
+	else if (pixel_format == PIXEL_FORMAT_L_8) {
 		data->current_pixel_format = PIXEL_FORMAT_L_8;
-	} else {
+	}
+#endif
+	else {
 		LOG_ERR("Unsupported Pixel format");
 		return -EINVAL;
 	}
@@ -479,7 +494,7 @@ static DEVICE_API(display, ssd1322_driver_api) = {
 	((DT_STRING_UPPER_TOKEN(inst, mipi_mode) == MIPI_DBI_MODE_SPI_4WIRE) ? SPI_WORD_SET(8)     \
 									     : SPI_WORD_SET(9))
 
-#ifdef CONFIG_SSD1322_DEFAULT_GRAYSCALE
+#if defined(CONFIG_SSD1322_DEFAULT_GRAYSCALE) && defined(PIXEL_FORMAT_L_8)
 #define SSD1322_CURRENT_PIXEL_FORMAT PIXEL_FORMAT_L_8
 #else
 #define SSD1322_CURRENT_PIXEL_FORMAT PIXEL_FORMAT_MONO01
